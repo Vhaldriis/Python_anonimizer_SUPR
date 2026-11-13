@@ -6,7 +6,7 @@ from urllib.parse import urlsplit, unquote
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:2912@localhost:5432/claude_anonimizer",
+    "postgresql://app_user:2912@localhost:5432/claude_anonimizer",
 )
 
 # Префиксы псевдонимов по типам полей

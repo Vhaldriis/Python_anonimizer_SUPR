@@ -15,7 +15,7 @@ $PsqlPath = Get-Command psql -ErrorAction SilentlyContinue
 if (-not $PsqlPath) {
     Write-Host " psql.exe not found in PATH." -ForegroundColor Yellow
     Write-Host " Enter full path to psql.exe" -ForegroundColor Yellow
-    Write-Host " Example: C:\Program Files\PostgreSQL\16\bin\psql.exe" -ForegroundColor Yellow
+    Write-Host " Example: C:\Program Files\PostgreSQL\18\bin\psql.exe" -ForegroundColor Yellow
     $PsqlPath = Read-Host "Path to psql.exe"
     if (-not (Test-Path $PsqlPath)) {
         Write-Host " File not found. Install PostgreSQL and add bin to PATH." -ForegroundColor Red
@@ -46,7 +46,7 @@ $EnvFile = Join-Path $ProjectDir ".env"
 $EnvContent = @"
 CLAUDE_API_KEY=sk-ant-your-key-here
 CLAUDE_MODEL=claude-3-haiku-20240307
-DATABASE_URL=postgresql://postgres:2912@localhost:5432/claude_anonimizer
+DATABASE_URL=postgresql://app_user:2912@localhost:5432/claude_anonimizer
 APP_SECRET=change-me-secret
 LOG_LEVEL=INFO
 "@
@@ -60,17 +60,22 @@ if (Test-Path $EnvFile) {
 
 # ---------- 5. Create database and user ----------
 Write-Host "`nCreating database and user..." -ForegroundColor Cyan
-& $PsqlPath -U postgres -d postgres -c "CREATE DATABASE claude_anonimizer;"
-if ($LASTEXITCODE -ne 0) {
-    Write-Host " Database may already exist (ignoring)" -ForegroundColor Yellow
-}
+# psql asks for the postgres password unless PGPASSWORD is already set
+if (-not $env:PGPASSWORD) { $env:PGPASSWORD = "2912" }
 
 & $PsqlPath -U postgres -d postgres -c "CREATE USER app_user WITH PASSWORD '2912';"
 if ($LASTEXITCODE -ne 0) {
     Write-Host " User may already exist (ignoring)" -ForegroundColor Yellow
 }
 
-& $PsqlPath -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE claude_anonimizer TO app_user;"
+& $PsqlPath -U postgres -d postgres -c "CREATE DATABASE claude_anonimizer OWNER app_user ENCODING 'UTF8' TEMPLATE template0;"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host " Database may already exist (ignoring)" -ForegroundColor Yellow
+}
+
+# PostgreSQL 15+ (incl. 18): GRANT on the database does not allow creating tables
+# in schema public, so app_user must own the database
+& $PsqlPath -U postgres -d postgres -c "ALTER DATABASE claude_anonimizer OWNER TO app_user;"
 
 # ---------- 6. Apply schema ----------
 Write-Host "`nApplying database schema..." -ForegroundColor Cyan

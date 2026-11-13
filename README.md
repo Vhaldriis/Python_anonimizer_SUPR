@@ -43,7 +43,7 @@ Python_anonimizer_SUPR/
 ## Требования
 
 - Python 3.10+
-- PostgreSQL 14+
+- PostgreSQL 18 (инструкция и скрипты рассчитаны на эту версию)
 - Ключ API от Anthropic (Claude), OpenAI или NVIDIA NIM (хотя бы один)
 
 ## Быстрый старт
@@ -60,11 +60,11 @@ python -m pip install -r requirements.txt
 Создайте базу данных и пользователя (пример для `psql`):
 
 ```powershell
-psql -U postgres -d postgres -c "CREATE USER app_user WITH PASSWORD 'ВАШ_ПАРОЛЬ';"
+psql -U postgres -d postgres -c "CREATE USER app_user WITH PASSWORD '2912';"
 psql -U postgres -d postgres -c "CREATE DATABASE claude_anonimizer OWNER app_user ENCODING 'UTF8' TEMPLATE template0;"
 ```
 
-База должна принадлежать `app_user`: в PostgreSQL 15+ одного `GRANT ALL PRIVILEGES ON DATABASE` недостаточно для создания таблиц в схеме `public`.
+`psql` запросит пароль пользователя `postgres` (на тестовом стенде — `2912`). База должна принадлежать `app_user`: в PostgreSQL 18 одного `GRANT ALL PRIVILEGES ON DATABASE` недостаточно для создания таблиц в схеме `public`.
 
 Примените схему:
 
@@ -75,7 +75,7 @@ psql -U app_user -d claude_anonimizer -f init_db.sql
 Этот шаг необязателен: при старте приложение само создаёт недостающие таблицы (включая `custom_entities` для Bitrix24, которой нет в `init_db.sql`).
 
 Если `psql` не найден, укажите полный путь, например:
-`C:\Program Files\PostgreSQL\16\bin\psql.exe`
+`C:\Program Files\PostgreSQL\18\bin\psql.exe`
 
 ### 3. Настройте `.env`
 
@@ -89,12 +89,14 @@ Copy-Item .env.example .env
 CLAUDE_API_KEY=sk-ant-ВАШ_КЛЮЧ
 OPENAI_API_KEY=sk-ВАШ_КЛЮЧ
 NVIDIA_API_KEY=nvapi-ВАШ_КЛЮЧ
-DATABASE_URL=postgresql://app_user:ВАШ_ПАРОЛЬ@localhost:5432/claude_anonimizer
+DATABASE_URL=postgresql://app_user:2912@localhost:5432/claude_anonimizer
 BITRIX24_WEBHOOK_URL=https://ВАШ_ПОРТАЛ/rest/ID_ПОЛЬЗОВАТЕЛЯ/КОД_ВЕБХУКА/
 DEFAULT_PROVIDER=nvidia
 ```
 
 Минимум один из ключей (`CLAUDE_API_KEY`, `OPENAI_API_KEY`, `NVIDIA_API_KEY`) должен быть реальным, а не placeholder'ом.
+
+Пароль `2912` — для тестового стенда; в продакшене задайте свой и укажите его в `DATABASE_URL`.
 
 | Переменная | Обязательна | По умолчанию | Назначение |
 |------------|-------------|--------------|------------|
@@ -103,7 +105,7 @@ DEFAULT_PROVIDER=nvidia
 | `OPENAI_MODEL` | нет | `gpt-4o-mini` | Модель OpenAI по умолчанию |
 | `NVIDIA_MODEL` | нет | `meta/llama-3.1-8b-instruct` | Модель NVIDIA по умолчанию |
 | `NVIDIA_BASE_URL` | нет | `https://integrate.api.nvidia.com/v1` | Базовый URL NVIDIA NIM |
-| `DATABASE_URL` | рекомендуется | `postgresql://postgres:2912@localhost:5432/claude_anonimizer` (зашито в `app/database.py`) | `postgresql://user:password@host:port/dbname` |
+| `DATABASE_URL` | рекомендуется | `postgresql://app_user:2912@localhost:5432/claude_anonimizer` (зашито в `app/database.py`) | `postgresql://user:password@host:port/dbname` |
 | `DEFAULT_PROVIDER` | нет | первый доступный | Провайдер, выбранный в интерфейсе |
 | `BITRIX24_WEBHOOK_URL` | нет | пусто | Вебхук для синхронизации CRM |
 | `LOG_LEVEL` | нет | `INFO` | Уровень логирования |
