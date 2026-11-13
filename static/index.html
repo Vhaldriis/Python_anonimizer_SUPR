@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Anonymizer — Защищённый чат с ИИ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #020617;
+            color: #f8fafc;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .glass {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .glass-input {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(71, 85, 105, 0.5);
+            color: #f1f5f9;
+        }
+        .glass-input:focus {
+            outline: none;
+            border-color: #fbbf24;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
+        }
+        .sidebar {
+            width: 280px;
+            background: rgba(15, 23, 42, 0.8);
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 30;
+        }
+        .main {
+            margin-left: 280px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(3, 7, 18, 0.8);
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #020617;
+            font-weight: bold;
+        }
+        .logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #ffffff;
+        }
+        .subtitle {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        .nav {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #e2e8f0;
+        }
+        .nav-item.active {
+            background: rgba(251, 191, 36, 0.1);
+            color: #fbbf24;
+            border: 1px solid rgba(251, 191, 36, 0.2);
+        }
+        .logout-item {
+            padding: 12px 16px;
+            color: #f87171;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+        .logout-item:hover {
+            background: rgba(248, 113, 113, 0.1);
+            color: #fca5a5;
+        }
+        .controls {
+            padding: 20px;
+            background: rgba(15, 23, 42, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .controls-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .field-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+        }
+        .field-input {
+            width: 120px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        select.field-input {
+            cursor: pointer;
+        }
+        .provider-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            font-size: 12px;
+            color: #fbbf24;
+            font-weight: 500;
+        }
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: #fbbf24;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #94a3b8;
+        }
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .empty-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f8fafc;
+            margin-bottom: 8px;
+        }
+        .empty-text {
+            font-size: 14px;
+            max-width: 300px;
+            text-align: center;
+        }
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 700px;
+            width: 100%;
+        }
+        .msg-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-width: 75%;
+        }
+        .msg-wrapper.user {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+        .msg-wrapper.claude {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+        .msg {
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 15px;
+            line-height: 1.6;
+            position: relative;
+            animation: slideUp 0.4s ease-out;
+        }
+        .msg.user {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            color: #020617;
+            border-bottom-right-radius: 2px;
+        }
+        .msg.claude {
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #e2e8f0;
+            border-bottom-left-radius: 2px;
+        }
+        .msg-meta {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 6px;
+        }
+        .input-area {
+            padding: 20px 24px;
+            background: rgba(15, 23, 42, 0.8);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .input-form {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+        }
+        .input-wrap {
+            flex: 1;
+            position: relative;
+            min-width: 0;
+        }
+        textarea {
+            width: 100%;
+            min-height: 52px;
+            max-height: 200px;
+            padding: 14px 52px 14px 18px;
+            border-radius: 12px;
+            resize: none;
+            font-size: 15px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        textarea:focus {
+            outline: none;
+        }
+        .attach-wrap {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            pointer-events: none;
+        }
+        .attach-wrap > * {
+            pointer-events: auto;
+        }
+        #attachBtn {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #attachBtn:hover {
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.1);
+        }
+        #fileInput {
+            display: none;
+        }
+        .send-btn {
+            padding: 14px 24px;
+            background: #fbbf24;
+            color: #020617;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .send-btn:hover:not(:disabled) {
+            background: #f59e0b;
+        }
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 18, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 50;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .modal-overlay.open {
+            display: flex;
+        }
+        .modal {
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #f8fafc;
+        }
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .modal-close:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .map-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .map-table th {
+            text-align: left;
+            padding: 10px 12px;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .map-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: #e2e8f0;
+        }
+        .map-pseudo {
+            font-family: 'Courier New', monospace;
+            color: #fbbf24;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: #e2e8f0;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.25);
+        }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #f8fafc;
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 60;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast.show {
+            display: flex;
+        }
+        .dot-pulse {
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="header">
+            <div class="logo">
+                <div class="logo-icon">🔐</div>
+                <div class="logo-text">Claude Anonymizer</div>
+            </div>
+            <div class="subtitle">Защищённый чат с ИИ</div>
+        </div>
+        <nav class="nav">
+            <a href="#" class="nav-item active" id="nav-chat">
+                <span>💬</span> <span>Чат</span>
+            </a>
+            <a href="#" class="nav-item" onclick="showMap(event)">
+                <span>🗺️</span> <span>Карта псевдонимов</span>
+            </a>
+        </nav>
+        <div style="padding: 20px;">
+            <a href="logout.php" class="logout-item">
+                <span>🚪</span> <span>Выйти</span>
+            </a>
+        </div>
+    </aside>
+
+    <main class="main">
+        <div class="controls">
+            <div class="controls-row">
+                <div class="field">
+                    <div class="field-label">User ID</div>
+                    <input type="number" id="userId" value="1" class="field-input glass-input">
+                </div>
+                <div class="field">
+                    <div class="field-label">Session ID</div>
+                    <input type="text" id="sessionId" value="web_1" class="field-input glass-input">
+                </div>
+                <div class="field" style="flex: 1;">
+                    <div class="field-label">Провайдер</div>
+                    <select id="providerSelect" class="field-input glass-input"></select>
+                </div>
+                <div class="field" style="flex: 1;">
+                    <div class="field-label">Модель</div>
+                    <select id="modelSelect" class="field-input glass-input"></select>
+                </div>
+            </div>
+            <div class="provider-badge">
+                <div class="dot"></div>
+                <span>Данные обезличены перед отправкой в ИИ</span>
+            </div>
+        </div>
+
+        <div class="chat-area">
+            <div class="empty-state" id="emptyState">
+                <div class="empty-icon">💬</div>
+                <div class="empty-title">Начните переписку</div>
+                <div class="empty-text">Ваши персональные данные будут заменены на псевдонимы перед отправкой в ИИ</div>
+            </div>
+            <div class="messages" id="chatMessages"></div>
+        </div>
+
+        <div class="input-area">
+            <form id="chatForm" class="input-form" onsubmit="handleSubmit(event)">
+                <div class="input-wrap">
+                    <textarea id="messageInput" placeholder="Напишите сообщение..." data-rows="1"></textarea>
+                    <div class="attach-wrap">
+                        <button type="button" id="attachBtn" title="Прикрепить файл">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><polyline points="7 3 7 8 15 8"/></svg>
+                        </button>
+                        <input type="file" id="fileInput" multiple accept="image/*,.pdf,.txt,.doc,.docx">
+                        <button type="submit" id="sendBtn" class="send-btn">Отправить</button>
+                    </div>
+                </div>
+            </form>
+            <div id="fileList" class="mt-3 flex flex-wrap gap-2 max-w-[600px] mx-auto"></div>
+        </div>
+    </main>
+
+    <div id="mapModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Карта псевдонимов</div>
+                <button class="modal-close" onclick="closeMap()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 12px; color: #64748b; margin-bottom: 16px;">Реальные значения хранятся только в локальной базе данных и не уходят к ИИ.</p>
+                <table class="map-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 30%;">Псевдоним</th>
+                            <th>Оригинал</th>
+                            <th style="width: 15%;">Тип</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mapTableBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeMap()">Закрыть</button>
+                <button class="btn btn-danger" onclick="clearMap()">Очистить карту</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">
+        <div class="dot-pulse"></div>
+        <span id="toastMsg">Готово</span>
+    </div>
+
+    <script>
+        const chatForm = document.getElementById('chatForm');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const chatMessages = document.getElementById('chatMessages');
+        const emptyState = document.getElementById('emptyState');
+        const toast = document.getElementById('toast');
+        const toastMsg = document.getElementById('toastMsg');
+        const userIdInput = document.getElementById('userId');
+        const sessionIdInput = document.getElementById('sessionId');
+        const providerSelect = document.getElementById('providerSelect');
+        const modelSelect = document.getElementById('modelSelect');
+
+        let providers = [];
+        let attachedFiles = []; // {name, type, size, base64}
+
+        const attachBtn = document.getElementById('attachBtn');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+
+        attachBtn.addEventListener('click', () => fileInput.click());
+
+        const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 МБ
+
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files || []);
+            for (const file of files) {
+                if (attachedFiles.some(f => f.name === file.name && f.size === file.size)) continue;
+                if (file.size > MAX_FILE_SIZE) {
+                    showToast(`Файл "${file.name}" слишком большой (макс 10 МБ)`);
+                    continue;
+                }
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    attachedFiles.push({
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        base64: ev.target.result.split(',')[1], // без data:...base64, префикса
+                    });
+                    renderFileList();
+                };
+                reader.readAsDataURL(file);
+            }
+            fileInput.value = '';
+        });
+
+        function renderFileList() {
+            fileList.innerHTML = '';
+            for (let i = 0; i < attachedFiles.length; i++) {
+                const f = attachedFiles[i];
+                const isImage = f.type.startsWith('image/');
+                const el = document.createElement('div');
+                el.className = 'flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-sm';
+                el.innerHTML = `
+                    <span class="${isImage ? 'text-yellow-400' : 'text-slate-400'}">${isImage ? '🖼️' : '📄'}</span>
+                    <span class="truncate w-32">${f.name}</span>
+                    <span class="text-xs text-slate-500 ml-2">(${Math.round(f.size / 1024)} KB)</span>
+                    <button type="button" onclick="removeFile(${i})" class="ml-2 text-slate-400 hover:text-red-400 transition">✕</button>
+                `;
+                fileList.appendChild(el);
+            }
+        }
+
+        window.removeFile = (index) => {
+            attachedFiles.splice(index, 1);
+            renderFileList();
+        };
+
+        function showToast(msg) {
+            toastMsg.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function appendMessage(role, text, meta = '') {
+            if (emptyState) emptyState.remove();
+            const div = document.createElement('div');
+            div.className = `msg-wrapper ${role}`;
+            div.innerHTML = `
+                <div class="msg ${role}">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+                ${meta ? `<div class="msg-meta">${meta}</div>` : ''}
+            `;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function loadProviders() {
+            try {
+                const res = await fetch('/models', {
+                    headers: { 'X-User-ID': userIdInput.value || '1' }
+                });
+                const data = await res.json();
+                providers = data.providers || [];
+                const defaultProvider = data.default_provider || (providers.length > 0 ? providers[0].id : null);
+
+                providerSelect.innerHTML = '';
+                if (providers.length === 0) {
+                    providerSelect.innerHTML = '<option value="" disabled>Нет настроенных провайдеров</option>';
+                    modelSelect.innerHTML = '<option value="" disabled>Настройте API-ключ в .env</option>';
+                    showToast('Нет доступных провайдеров');
+                    return;
+                }
+
+                providers.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.name;
+                    if (p.id === defaultProvider) opt.selected = true;
+                    providerSelect.appendChild(opt);
+                });
+
+                await loadModelsForProvider(defaultProvider || providers[0].id);
+            } catch (e) {
+                showToast('Ошибка загрузки провайдеров');
+            }
+        }
+
+        async function loadModelsForProvider(providerId) {
+            modelSelect.disabled = true;
+            modelSelect.innerHTML = '<option>Загрузка...</option>';
+
+            try {
+                const res = await fetch(`/models/${providerId}`, {
+                    headers: { 'X-User-ID': userIdInput.value || '1' }
+                });
+                const data = await res.json();
+
+                modelSelect.innerHTML = '';
+                const models = data.models || [];
+                if (models.length === 0) {
+                    modelSelect.innerHTML = '<option disabled>Нет моделей</option>';
+                } else {
+                    models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.textContent = m.name;
+                        if (m.id === data.default_model) opt.selected = true;
+                        modelSelect.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                showToast('Не удалось загрузить модели');
+            } finally {
+                modelSelect.disabled = false;
+            }
+        }
+
+        providerSelect.addEventListener('change', (e) => {
+            loadModelsForProvider(e.target.value);
+        });
+
+        function showMap(e) {
+            if (e) e.preventDefault();
+            const modal = document.getElementById('mapModal');
+            const tbody = document.getElementById('mapTableBody');
+            tbody.innerHTML = '';
+            modal.classList.add('open');
+
+            fetch('/map/' + encodeURIComponent(sessionIdInput.value || 'default'), {
+                headers: { 'X-User-ID': userIdInput.value || '1' }
+            })
+                .then(res => res.json())
+                .then(json => {
+                    if (json.success && json.map) {
+                        for (const [pseudo, orig] of Object.entries(json.map)) {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td class="map-pseudo">${pseudo}</td>
+                                <td>${orig}</td>
+                                <td>session</td>
+                            `;
+                            tbody.appendChild(tr);
+                        }
+                    }
+                });
+        }
+
+        function closeMap() {
+            document.getElementById('mapModal').classList.remove('open');
+        }
+
+        async function clearMap() {
+            await fetch('/clear/' + encodeURIComponent(sessionIdInput.value || 'default'), {
+                method: 'POST',
+                headers: { 'X-User-ID': userIdInput.value || '1' }
+            });
+            closeMap();
+            showToast('Карта псевдонимов очищена');
+        }
+
+        async function handleSubmit(e) {
+            e.preventDefault();
+            const text = messageInput.value.trim();
+            if (!text && attachedFiles.length === 0) return;
+
+            appendMessage('user', text + (attachedFiles.length ? ` [${attachedFiles.map(f => f.name).join(', ')}]` : ''));
+            messageInput.value = '';
+            attachedFiles = [];
+            renderFileList();
+            sendBtn.disabled = true;
+
+            const provider = providerSelect.value;
+            const model = modelSelect.value;
+
+            try {
+                const res = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-ID': userIdInput.value || '1',
+                        'X-Session-ID': sessionIdInput.value || 'default'
+                    },
+                    body: JSON.stringify({
+                        messages: [{ role: 'user', content: text }],
+                        session_id: sessionIdInput.value || 'default',
+                        user_id: parseInt(userIdInput.value) || 1,
+                        provider: provider,
+                        model: model,
+                        max_tokens: 2048,
+                        temperature: 0.7,
+                        files: attachedFiles
+                    })
+                });
+                const json = await res.json();
+                sendBtn.disabled = false;
+
+                if (!json.success) {
+                    appendMessage('claude', '❌ Ошибка: ' + (json.error || 'неизвестная ошибка'));
+                    showToast(json.error || 'Ошибка');
+                    return;
+                }
+
+                const usage = json.usage || {};
+                appendMessage('claude', json.text || '',
+                    `провайдер: ${json.provider || provider} | модель: ${json.model || model} | токены: in ${usage.input_tokens ?? 0} / out ${usage.output_tokens ?? 0}`);
+                showToast('Ответ получен');
+            } catch (err) {
+                sendBtn.disabled = false;
+                appendMessage('claude', '❌ Ошибка сети: ' + err.message);
+                showToast(err.message);
+            }
+        }
+
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.requestSubmit();
+            }
+        });
+
+        document.getElementById('mapModal').addEventListener('click', (e) => {
+            if (e.target.id === 'mapModal') closeMap();
+        });
+
+        loadProviders();
+    </script>
+</body>
+</html>
