@@ -2,6 +2,7 @@ import os
 import pg8000
 from typing import Optional, List, Dict
 from contextlib import contextmanager
+from urllib.parse import urlsplit, unquote
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -18,20 +19,37 @@ PSEUDONYM_PREFIXES = {
     "other": "ДАННЫЕ",
 }
 
+# Сколько занятых номеров подряд пропускать при подборе свободного псевдонима
+MAX_PSEUDONYM_ATTEMPTS = 100
+
 
 def parse_db_url(url: str) -> dict:
     """Разбивает DATABASE_URL на параметры для pg8000."""
     # postgresql://user:password@host:port/dbname
-    import re
-    m = re.match(r"postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)", url)
-    if not m:
-        raise ValueError(f"Неверный формат DATABASE_URL: {url}")
+    # Спецсимволы в логине/пароле задаются в percent-encoding (например, @ -> %40)
+    try:
+        parts = urlsplit(url)
+        port = parts.port or 5432
+    except ValueError:
+        parts, port = None, None
+    database = parts.path.lstrip("/") if parts else ""
+    if (
+        not parts
+        or parts.scheme not in ("postgresql", "postgres")
+        or not parts.username
+        or not parts.hostname
+        or not database
+    ):
+        # Сам URL в сообщение не включаем: в нём пароль
+        raise ValueError(
+            "Неверный формат DATABASE_URL, ожидается postgresql://user:password@host:port/dbname"
+        )
     return {
-        "user": m.group(1),
-        "password": m.group(2),
-        "host": m.group(3),
-        "port": int(m.group(4)),
-        "database": m.group(5),
+        "user": unquote(parts.username),
+        "password": unquote(parts.password) if parts.password is not None else None,
+        "host": parts.hostname,
+        "port": port,
+        "database": unquote(database),
     }
 
 
@@ -137,48 +155,36 @@ def get_or_create_pseudonym(
         if row:
             return row[0]
 
-        # 2. Инкрементировать счётчик для типа поля
-        cur.execute(
-            """
-            INSERT INTO pseudonym_counters (user_id, session_id, field_type, counter)
-            VALUES (%s, %s, %s, 1)
-            ON CONFLICT (user_id, session_id, field_type)
-            DO UPDATE SET counter = pseudonym_counters.counter + 1
-            RETURNING counter
-            """,
-            (user_id, session_id, field_type),
-        )
-        counter = cur.fetchone()[0]
-        pseudonym = f"[{prefix}_{counter}]"
+        # 2-3. Берём следующий номер из счётчика, пока псевдоним не окажется свободным.
+        # Занятый номер (ON CONFLICT DO NOTHING -> rowcount 0) просто пропускается,
+        # транзакция при этом не прерывается и инкремент счётчика сохраняется.
+        for _ in range(MAX_PSEUDONYM_ATTEMPTS):
+            cur.execute(
+                """
+                INSERT INTO pseudonym_counters (user_id, session_id, field_type, counter)
+                VALUES (%s, %s, %s, 1)
+                ON CONFLICT (user_id, session_id, field_type)
+                DO UPDATE SET counter = pseudonym_counters.counter + 1
+                RETURNING counter
+                """,
+                (user_id, session_id, field_type),
+            )
+            counter = cur.fetchone()[0]
+            pseudonym = f"[{prefix}_{counter}]"
 
-        # 3. Защита от коллизий псевдонима
-        while True:
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO anonymization_map
-                    (user_id, session_id, pseudonym, original, field_type)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (user_id, session_id, pseudonym, original, field_type),
-                )
-                break
-            except pg8000.IntegrityError:
-                conn = cur.connection
-                conn.rollback()
-                cur.execute(
-                    """
-                    UPDATE pseudonym_counters
-                    SET counter = counter + 1
-                    WHERE user_id = %s AND session_id = %s AND field_type = %s
-                    RETURNING counter
-                    """,
-                    (user_id, session_id, field_type),
-                )
-                counter = cur.fetchone()[0]
-                pseudonym = f"[{prefix}_{counter}]"
+            cur.execute(
+                """
+                INSERT INTO anonymization_map
+                (user_id, session_id, pseudonym, original, field_type)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, session_id, pseudonym) DO NOTHING
+                """,
+                (user_id, session_id, pseudonym, original, field_type),
+            )
+            if cur.rowcount == 1:
+                return pseudonym
 
-    return pseudonym
+    raise RuntimeError(f"Не удалось подобрать свободный псевдоним типа {field_type}")
 
 
 def get_original(

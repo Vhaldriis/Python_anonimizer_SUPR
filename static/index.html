@@ -653,7 +653,7 @@
                 el.className = 'flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-sm';
                 el.innerHTML = `
                     <span class="${isImage ? 'text-yellow-400' : 'text-slate-400'}">${isImage ? '🖼️' : '📄'}</span>
-                    <span class="truncate w-32">${f.name}</span>
+                    <span class="truncate w-32">${escapeHtml(f.name)}</span>
                     <span class="text-xs text-slate-500 ml-2">(${Math.round(f.size / 1024)} KB)</span>
                     <button type="button" onclick="removeFile(${i})" class="ml-2 text-slate-400 hover:text-red-400 transition">✕</button>
                 `;
@@ -768,12 +768,12 @@
                 .then(res => res.json())
                 .then(json => {
                     if (json.success && json.map) {
-                        for (const [pseudo, orig] of Object.entries(json.map)) {
+                        for (const item of json.map) {
                             const tr = document.createElement('tr');
                             tr.innerHTML = `
-                                <td class="map-pseudo">${pseudo}</td>
-                                <td>${orig}</td>
-                                <td>session</td>
+                                <td class="map-pseudo">${escapeHtml(item.pseudonym)}</td>
+                                <td>${escapeHtml(item.original)}</td>
+                                <td>${escapeHtml(item.field_type)}</td>
                             `;
                             tbody.appendChild(tr);
                         }
@@ -801,6 +801,7 @@
 
             appendMessage('user', text + (attachedFiles.length ? ` [${attachedFiles.map(f => f.name).join(', ')}]` : ''));
             messageInput.value = '';
+            const filesToSend = attachedFiles;
             attachedFiles = [];
             renderFileList();
             sendBtn.disabled = true;
@@ -824,7 +825,7 @@
                         model: model,
                         max_tokens: 2048,
                         temperature: 0.7,
-                        files: attachedFiles
+                        files: filesToSend
                     })
                 });
                 const json = await res.json();

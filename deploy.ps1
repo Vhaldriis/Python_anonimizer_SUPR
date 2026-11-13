@@ -50,8 +50,13 @@ DATABASE_URL=postgresql://postgres:2912@localhost:5432/claude_anonimizer
 APP_SECRET=change-me-secret
 LOG_LEVEL=INFO
 "@
-$EnvContent | Out-File -FilePath $EnvFile -Encoding utf8
-Write-Host " .env updated (DATABASE_URL with password 2912)" -ForegroundColor Green
+if (Test-Path $EnvFile) {
+    # Never overwrite an existing .env: it holds the real API keys
+    Write-Host " .env already exists - left unchanged" -ForegroundColor Yellow
+} else {
+    $EnvContent | Out-File -FilePath $EnvFile -Encoding utf8
+    Write-Host " .env created (DATABASE_URL with password 2912)" -ForegroundColor Green
+}
 
 # ---------- 5. Create database and user ----------
 Write-Host "`nCreating database and user..." -ForegroundColor Cyan
@@ -85,7 +90,7 @@ Write-Host ""
 Write-Host " IMPORTANT: Open .env and set your real CLAUDE_API_KEY (Anthropic key)." -ForegroundColor Yellow
 Write-Host ""
 Write-Host " To start the server, run:" -ForegroundColor Cyan
-Write-Host "   cd C:\Users\vlsta\projects\Pithon_anonimizer" -ForegroundColor White
+Write-Host "   cd $ProjectDir" -ForegroundColor White
 Write-Host "   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000" -ForegroundColor White
 Write-Host ""
 Write-Host " Then open in browser:" -ForegroundColor Cyan

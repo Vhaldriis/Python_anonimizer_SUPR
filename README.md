@@ -9,10 +9,10 @@
 - 🔐 **Обезличивание персональных данных** — имена, телефоны, email, ИНН, названия компаний заменяются на псевдонимы вида `[ИМЯ_1]`, `[TEL_1]`, `[EMAIL_1]`, `[ОРГ_1]`
 - 🔄 **Обратная подстановка** — в ответе ИИ псевдонимы заменяются на реальные значения из локальной PostgreSQL
 - 🤖 **Несколько провайдеров** — Claude, OpenAI, NVIDIA NIM (выбирается в веб-интерфейсе)
-- 📂 **Прикрепление файлов** — изображения и текстовые документы к сообщениям
+- 📂 **Прикрепление файлов** — изображения (только для Claude) и текстовые файлы к сообщениям
 - 🏢 **Интеграция с Bitrix24** — синхронизация компаний и контактов из портала для точного псевдонимизирования
 - 📊 **Веб-интерфейс** — современный чат с выбором провайдера и модели, карта псевдонимов
-- 📝 **Аудит** — логирование запросов и токенов
+- 📝 **Аудит** — карта псевдонимов сессии доступна через `GET /map/{session_id}`; расход токенов возвращается в ответе `/chat`
 
 ## Структура проекта
 
@@ -25,12 +25,17 @@ Python_anonimizer_SUPR/
 │   ├── anonymizer.py        # Замена данных на псевдонимы (БД + regex)
 │   ├── ai_client.py         # Клиенты Claude / OpenAI / NVIDIA
 │   ├── bitrix24_sync.py     # Синхронизация из Bitrix24
+│   ├── claude_client.py     # Устаревший клиент только для Claude (не используется)
 │   └── models.py            # Pydantic-схемы
 ├── static/
 │   └── index.html           # Веб-интерфейс чата
-├── .env                     # Конфигурация (ключи, URL БД, вебхук Bitrix24)
+├── tests/                   # Тесты (pytest), БД и сеть не требуются
+├── .env                     # Локальная конфигурация (создаётся из .env.example, не коммитится)
 ├── .env.example             # Шаблон .env
-├── init_db.sql              # Схема PostgreSQL
+├── init_db.sql              # Схема PostgreSQL (приложение также создаёт таблицы при старте)
+├── deploy.ps1               # Скрипт развёртывания для Windows (PowerShell)
+├── setup.bat                # Установка зависимостей для Windows
+├── РАЗВЁРТЫВАНИЕ.md         # Пошаговая инструкция по развёртыванию
 ├── requirements.txt         # Python зависимости
 └── README.md
 ```
@@ -55,10 +60,11 @@ python -m pip install -r requirements.txt
 Создайте базу данных и пользователя (пример для `psql`):
 
 ```powershell
-psql -U postgres -d postgres -c "CREATE DATABASE claude_anonimizer;"
-psql -U postgres -d postgres -c "CREATE USER app_user WITH PASSWORD '2912';"
-psql -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE claude_anonimizer TO app_user;"
+psql -U postgres -d postgres -c "CREATE USER app_user WITH PASSWORD 'ВАШ_ПАРОЛЬ';"
+psql -U postgres -d postgres -c "CREATE DATABASE claude_anonimizer OWNER app_user ENCODING 'UTF8' TEMPLATE template0;"
 ```
+
+База должна принадлежать `app_user`: в PostgreSQL 15+ одного `GRANT ALL PRIVILEGES ON DATABASE` недостаточно для создания таблиц в схеме `public`.
 
 Примените схему:
 
@@ -66,30 +72,52 @@ psql -U postgres -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE claude_anonimi
 psql -U app_user -d claude_anonimizer -f init_db.sql
 ```
 
+Этот шаг необязателен: при старте приложение само создаёт недостающие таблицы (включая `custom_entities` для Bitrix24, которой нет в `init_db.sql`).
+
 Если `psql` не найден, укажите полный путь, например:
 `C:\Program Files\PostgreSQL\16\bin\psql.exe`
 
 ### 3. Настройте `.env`
 
-Откройте `C:\Users\vlsta\projects\Python_anonimizer_SUPR\.env` и укажите:
+Скопируйте шаблон и укажите свои значения:
+
+```powershell
+Copy-Item .env.example .env
+```
 
 ```
 CLAUDE_API_KEY=sk-ant-ВАШ_КЛЮЧ
 OPENAI_API_KEY=sk-ВАШ_КЛЮЧ
 NVIDIA_API_KEY=nvapi-ВАШ_КЛЮЧ
-DATABASE_URL=postgresql://postgres:2912@localhost:5432/claude_anonimizer
-BITRIX24_WEBHOOK_URL=https://bx.supr.ru/rest/16/rn1to8zs42aft2ou/
+DATABASE_URL=postgresql://app_user:ВАШ_ПАРОЛЬ@localhost:5432/claude_anonimizer
+BITRIX24_WEBHOOK_URL=https://ВАШ_ПОРТАЛ/rest/ID_ПОЛЬЗОВАТЕЛЯ/КОД_ВЕБХУКА/
 DEFAULT_PROVIDER=nvidia
 ```
 
 Минимум один из ключей (`CLAUDE_API_KEY`, `OPENAI_API_KEY`, `NVIDIA_API_KEY`) должен быть реальным, а не placeholder'ом.
 
+| Переменная | Обязательна | По умолчанию | Назначение |
+|------------|-------------|--------------|------------|
+| `CLAUDE_API_KEY` / `OPENAI_API_KEY` / `NVIDIA_API_KEY` | хотя бы одна | — | Ключи провайдеров |
+| `CLAUDE_MODEL` | нет | `claude-3-haiku-20240307` | Модель Claude по умолчанию |
+| `OPENAI_MODEL` | нет | `gpt-4o-mini` | Модель OpenAI по умолчанию |
+| `NVIDIA_MODEL` | нет | `meta/llama-3.1-8b-instruct` | Модель NVIDIA по умолчанию |
+| `NVIDIA_BASE_URL` | нет | `https://integrate.api.nvidia.com/v1` | Базовый URL NVIDIA NIM |
+| `DATABASE_URL` | рекомендуется | `postgresql://postgres:2912@localhost:5432/claude_anonimizer` (зашито в `app/database.py`) | `postgresql://user:password@host:port/dbname` |
+| `DEFAULT_PROVIDER` | нет | первый доступный | Провайдер, выбранный в интерфейсе |
+| `BITRIX24_WEBHOOK_URL` | нет | пусто | Вебхук для синхронизации CRM |
+| `LOG_LEVEL` | нет | `INFO` | Уровень логирования |
+
 ### 4. Запустите сервер
 
 ```powershell
 cd C:\Users\vlsta\projects\Python_anonimizer_SUPR
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Запускать нужно из корня проекта: путь к `static/` задан относительно текущей директории.
+
+> ⚠️ В API нет аутентификации: `X-User-ID` принимается на веру, а `/map` и `/bitrix24/entities` отдают реальные данные. Не открывайте порт наружу (`--host 0.0.0.0`) без обратного прокси с авторизацией.
 
 ### 5. Откройте веб-интерфейс
 
@@ -139,7 +167,7 @@ Body:
    ```powershell
    Invoke-WebRequest -Method Post -Uri "http://localhost:8000/bitrix24/sync" -Headers @{"X-User-ID"="1"} -UseBasicParsing
    ```
-4. Названия компаний и имена сотрудников из Bitrix24 будут автоматически заменяться на псевдонимы в чате.
+4. Названия компаний и имена контактов из Bitrix24 (в виде «Фамилия Имя») будут автоматически заменяться на псевдонимы в чате. Поиск идёт по точному вхождению строки с учётом регистра.
 
 ## Анонимизация данных
 
@@ -153,17 +181,27 @@ Body:
 ## Прикрепление файлов
 
 В веб-чате нажмите кнопку 📎 и прикрепите:
-- Изображения (JPG, PNG, WebP и др.) — отправляются ИИ как мультимодальный контент
-- Текстовые файлы (TXT, PDF, DOC, DOCX) — содержимое извлекается, обезличивается и добавляется к сообщению
+- Изображения (JPG, PNG, WebP и др.) — отправляются как мультимодальный контент только провайдеру Claude; для OpenAI и NVIDIA изображения не передаются. **Изображения не обезличиваются** — не прикрепляйте сканы с персональными данными
+- Текстовые файлы (TXT, CSV и другие `text/*`) — содержимое обезличивается и добавляется к сообщению
+- PDF, DOC, DOCX — извлечение текста не реализовано; модели уходит только пометка, что вложение не поддерживается
 
-Лимит: 10 МБ на файл.
+Лимит: 10 МБ на файл (проверяется только в веб-интерфейсе, не на сервере).
+
+## Тесты
+
+```powershell
+python -m pip install pytest
+python -m pytest
+```
+
+Тесты не требуют PostgreSQL и не обращаются к провайдерам ИИ.
 
 ## Безопасность
 
 - Карта псевдонимов хранится только локально в PostgreSQL и никогда не уходит к провайдеру ИИ
-- Ключи API храните в `.env` (не коммитьте в репозиторий)
-- Используйте HTTPS в продакшене
-- Папки с логами и кэшем закрыты от прямого доступа
+- Ключи API храните в `.env` (не коммитьте в репозиторий; файл указан в `.gitignore`)
+- Используйте HTTPS и обратный прокси с авторизацией в продакшене — собственной аутентификации в приложении нет
+- Обезличивание основано на регулярных выражениях и не гарантирует удаление всех персональных данных (адреса, имена в косвенных падежах, отчества, данные на изображениях не распознаются)
 
 ---
 

@@ -72,9 +72,11 @@ def send_message(
                         "data": b64,
                     },
                 })
-            # Текстовые файлы — извлекаем текст, обезличиваем и добавляем к сообщению
-            elif ftype in ("text/plain", "application/pdf", "application/msword",
-                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+            # Текстовые файлы — извлекаем текст, обезличиваем и добавляем к сообщению.
+            # PDF/DOC/DOCX — бинарные форматы: декодировать их как UTF-8 нельзя
+            # (получается мусор, в котором regex не находит персональные данные),
+            # поэтому они попадают в ветку "не поддерживается".
+            elif ftype.startswith("text/"):
                 try:
                     file_text = base64.b64decode(b64).decode("utf-8", errors="ignore")
                     # Обезличиваем содержимое текстового файла
@@ -133,7 +135,7 @@ def _send_claude(
     model = model or os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
 
     # Разделяем system и остальные сообщения для Claude
-    system_msg = ""
+    system_msg = system or ""
     chat_messages = []
     for m in messages:
         if m["role"] == "system":
@@ -184,9 +186,7 @@ def _send_openai(
     formatted_messages = []
     if system:
         formatted_messages.append({"role": "system", "content": system})
-    for m in messages:
-        if m["role"] != "system":
-            formatted_messages.append(m)
+    formatted_messages.extend(messages)
 
     response = client.chat.completions.create(
         model=model,
@@ -228,9 +228,7 @@ def _send_nvidia(
     formatted_messages = []
     if system:
         formatted_messages.append({"role": "system", "content": system})
-    for m in messages:
-        if m["role"] != "system":
-            formatted_messages.append(m)
+    formatted_messages.extend(messages)
 
     payload = {
         "model": model,

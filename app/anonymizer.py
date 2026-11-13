@@ -8,7 +8,6 @@ from app.database import (
     get_all_entities,
     PSEUDONYM_PREFIXES,
 )
-from app.bitrix24_sync import GLOBAL_USER_ID, GLOBAL_SESSION
 
 # Паттерны поиска персональных данных (функция Б)
 PATTERNS = {
@@ -20,6 +19,13 @@ PATTERNS = {
 }
 
 COMPILED_PATTERNS = {ft: re.compile(pat) for ft, pat in PATTERNS.items()}
+
+# Тип сущности Bitrix24 (custom_entities.entity_type) -> тип поля псевдонима
+ENTITY_FIELD_TYPES = {"company": "company", "contact": "name"}
+
+# Оригинал может сам содержать псевдоним (regex-этапы идут последовательно),
+# поэтому обратная подстановка повторяется до стабилизации текста
+MAX_DEANONYMIZE_PASSES = 10
 
 
 # ============================================================
@@ -40,9 +46,13 @@ def _replace_known_entities(text: str, user_id: int, session_id: str) -> str:
     result = text
     for ent in entities_sorted:
         name = ent["name"]
-        pseudonym = ent["pseudonym"]
-        if name and pseudonym and name in result:
-            result = result.replace(name, pseudonym)
+        if not name or name not in result:
+            continue
+        # Псевдоним выдаётся в карте текущей сессии: глобальные псевдонимы Bitrix24
+        # ([ОРГ_1], [ИМЯ_1], ...) совпадали бы с сессионными от regex-этапа
+        field_type = ENTITY_FIELD_TYPES.get(ent.get("entity_type"), "other")
+        pseudonym = get_or_create_pseudonym(name, field_type, user_id, session_id)
+        result = result.replace(name, pseudonym)
 
     return result
 
@@ -108,18 +118,13 @@ def deanonymize_text(
 ) -> str:
     """
     Заменяет псевдонимы в ответе на реальные значения из локальной БД.
-    Загружает карту из пользовательской сессии + глобальных сущностей Bitrix24.
+    Используется только карта пользовательской сессии (в неё же попадают
+    сущности Bitrix24, встретившиеся в сообщениях этой сессии).
     """
     if not text:
         return text
 
-    # Карта пользовательской сессии
     mapping = get_full_map(user_id, session_id)
-
-    # Глобальные сущности Bitrix24 (псевдонимы компаний и контактов)
-    global_mapping = get_full_map(GLOBAL_USER_ID, GLOBAL_SESSION)
-    mapping.extend(global_mapping)
-
     if not mapping:
         return text
 
@@ -127,8 +132,12 @@ def deanonymize_text(
     sorted_map = sorted(mapping, key=lambda x: len(x["pseudonym"]), reverse=True)
 
     result = text
-    for item in sorted_map:
-        result = result.replace(item["pseudonym"], item["original"])
+    for _ in range(MAX_DEANONYMIZE_PASSES):
+        previous = result
+        for item in sorted_map:
+            result = result.replace(item["pseudonym"], item["original"])
+        if result == previous:
+            break
 
     return result
 

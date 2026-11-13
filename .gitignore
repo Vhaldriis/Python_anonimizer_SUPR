@@ -1,0 +1,10 @@
+# Секреты и локальная конфигурация
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/

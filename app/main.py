@@ -69,8 +69,20 @@ async def ui():
         )
 
 
+def _parse_user_id(x_user_id: Optional[str], default: int) -> int:
+    """Разбирает заголовок X-User-ID; при нечисловом значении — 400 вместо 500."""
+    if not x_user_id:
+        return default
+    try:
+        return int(x_user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="X-User-ID должен быть целым числом")
+
+
+# Эндпоинты с синхронным вводом-выводом (БД, SDK провайдеров) объявлены через def:
+# FastAPI выполняет их в пуле потоков и не блокирует event loop.
 @app.post("/chat", response_model=ChatResponse)
-async def chat(
+def chat(
     request: ChatRequest,
     x_user_id: Optional[str] = Header(None),
     x_session_id: Optional[str] = Header(None),
@@ -81,7 +93,7 @@ async def chat(
     2. Отправляет анонимный текст в выбранную ИИ-модель (Claude / OpenAI / NVIDIA).
     3. Деанимизирует ответ (подставляет реальные значения из локальной PostgreSQL).
     """
-    user_id = int(x_user_id) if x_user_id else request.user_id
+    user_id = _parse_user_id(x_user_id, request.user_id)
     session_id = x_session_id or request.session_id
     provider = request.provider or "claude"
 
@@ -208,12 +220,13 @@ async def _fetch_models_from_provider(provider: str, api_key: str) -> list[dict]
     url = PROVIDER_MODELS_URL.get(provider)
     if not url:
         return None
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
+    headers = {"Accept": "application/json"}
     if provider == "claude":
+        # Anthropic авторизует по x-api-key, а не по Bearer-токену
+        headers["x-api-key"] = api_key
         headers["anthropic-version"] = "2023-06-01"
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -278,17 +291,17 @@ async def get_provider_models(provider: str, x_user_id: Optional[str] = Header(N
 
 
 @app.get("/map/{session_id}", response_model=MapResponse)
-async def get_map(session_id: str, x_user_id: Optional[str] = Header(None)):
+def get_map(session_id: str, x_user_id: Optional[str] = Header(None)):
     """Возвращает карту псевдонимов для сессии (отладка/аудит)."""
-    user_id = int(x_user_id) if x_user_id else 1
+    user_id = _parse_user_id(x_user_id, 1)
     mapping = get_full_map(user_id, session_id)
     return MapResponse(success=True, map=mapping)
 
 
 @app.post("/clear/{session_id}", response_model=MapResponse)
-async def clear_session_map(session_id: str, x_user_id: Optional[str] = Header(None)):
+def clear_session_map(session_id: str, x_user_id: Optional[str] = Header(None)):
     """Очищает карту псевдонимов и счётчики для сессии."""
-    user_id = int(x_user_id) if x_user_id else 1
+    user_id = _parse_user_id(x_user_id, 1)
     clear_map(user_id, session_id)
     return MapResponse(success=True, map=[])
 
@@ -301,7 +314,7 @@ async def bitrix24_sync(x_user_id: Optional[str] = Header(None)):
 
 
 @app.get("/bitrix24/entities")
-async def bitrix24_entities():
+def bitrix24_entities():
     """Возвращает все синхронизированные сущности Bitrix24 с их псевдонимами."""
     entities = get_all_entities()
     return {"success": True, "count": len(entities), "entities": entities}

@@ -18,7 +18,7 @@ echo [2/5] Проверка переменной CLAUDE_API_KEY...
 findstr /c:"CLAUDE_API_KEY=sk-ant-" .env >nul
 if %errorlevel% neq 0 (
     echo ВНИМАНИЕ: В файле .env не указан реальный CLAUDE_API_KEY!
-    echo Откройте .env и замените sk-ant-your-key-here на swój ключ Anthropic.
+    echo Откройте .env и замените sk-ant-your-key-here на свой ключ Anthropic.
 )
 
 echo [3/5] Готово. Теперь настройте PostgreSQL (см. инструкцию ниже)
